@@ -136,3 +136,20 @@ playlists_insert_response = youtube.playlists().insert(
 ).execute()
 
 print 'New playlist id: %s' % playlists_insert_response['id']
+
+base_playlist_insert = {
+    'snippet': {
+        'playlistId': playlists_insert_response['id'],
+        'resourceId': {
+            'kind': 'youtube#video',
+        },
+    },
+}
+
+for video in reversed(videos):
+    body = dict(**base_playlist_insert)
+    body['snippet']['resourceId']['videoId'] = video
+    youtube.playlistItems().insert(
+        part='snippet',
+        body=body
+    ).execute()
