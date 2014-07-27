@@ -24,7 +24,7 @@ from oauth2client.tools import argparser, run_flow
 #   https://developers.google.com/youtube/v3/guides/authentication
 # For more information about the client_secrets.json file format, see:
 #   https://developers.google.com/api-client-library/python/guide/aaa_client_secrets
-CLIENT_SECRETS_FILE = "client_secrets.json"
+CLIENT_SECRETS_FILE = 'client_secrets.json'
 
 # This variable defines a message to display if the CLIENT_SECRETS_FILE is
 # missing.
@@ -46,15 +46,15 @@ https://developers.google.com/api-client-library/python/guide/aaa_client_secrets
 
 # This OAuth 2.0 access scope allows for read-only access to the authenticated
 # user's account, but not other types of account access.
-YOUTUBE_READONLY_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
-YOUTUBE_API_SERVICE_NAME = "youtube"
-YOUTUBE_API_VERSION = "v3"
+YOUTUBE_READ_WRITE_SCOPE = 'https://www.googleapis.com/auth/youtube'
+YOUTUBE_API_SERVICE_NAME = 'youtube'
+YOUTUBE_API_VERSION = 'v3'
 
 flow = flow_from_clientsecrets(CLIENT_SECRETS_FILE,
                                message=MISSING_CLIENT_SECRETS_MESSAGE,
-                               scope=YOUTUBE_READONLY_SCOPE)
+                               scope=YOUTUBE_READ_WRITE_SCOPE)
 
-storage = Storage("%s-oauth2.json" % sys.argv[0])
+storage = Storage('%s-oauth2.json' % sys.argv[0])
 credentials = storage.get()
 
 if credentials is None or credentials.invalid:
@@ -107,25 +107,25 @@ for channel in channels_response['items']:
         'uploads': uploads_list_id,
         'videos': []
     })
-    print "Videos in list %s of channel %s" % (uploads_list_id, current_channel['title'])
+    print 'Videos in list %s of channel %s' % (uploads_list_id, current_channel['title'])
 
     playlistitems_list_request = youtube.playlistItems().list(
         playlistId=uploads_list_id,
-        part="snippet",
+        part='snippet',
         maxResults=50
     )
 
     stale = False
     while playlistitems_list_request and not stale:
         playlistitems_list_response = playlistitems_list_request.execute()
-        for playlist_item in playlistitems_list_response["items"]:
+        for playlist_item in playlistitems_list_response['items']:
             snippet = playlist_item['snippet']
             published_date = dateparser.parse(snippet['publishedAt'])
             if cutoff_date > published_date:
                 stale = True
                 break
-            title = snippet["title"]
-            video_id = snippet["resourceId"]["videoId"]
+            title = snippet['title']
+            video_id = snippet['resourceId']['videoId']
             current_channel['videos'].append(video_id)
         playlistitems_list_request = youtube.playlistItems().list_next(
             playlistitems_list_request, playlistitems_list_response)
@@ -140,6 +140,18 @@ for key in prune_keys:
 
 pprint.pprint(subscriptions, depth=3)
 
-# Now we can easily make a list of all of the videos that were uploaded between
-# cutoff_date and now, and insert them in a playlist. We might also need to
-# also sort the videos by their published time.
+playlists_insert_response = youtube.playlists().insert(
+    part='snippet,status',
+    body=dict(
+        snippet=dict(
+            title='{0}-{1}'.format(cutoff_date, datetime.now()),
+            description='Videos from subscripted channels from {0} to {1}'
+            .format(cutoff_date, datetime.now())
+        ),
+        status=dict(
+            privacyStatus='private'
+        )
+    )
+).execute()
+
+print 'New playlist id: %s' % playlists_insert_response['id']
