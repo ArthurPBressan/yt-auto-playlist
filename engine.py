@@ -1,12 +1,10 @@
 # coding: utf-8
-
 import httplib2
 import os
 import sys
 import pprint
-from dateutil import parser as dateparser
-from datetime import datetime, timedelta
-import pytz
+
+import arrow
 
 from apiclient.discovery import build
 from oauth2client.client import flow_from_clientsecrets
@@ -88,8 +86,8 @@ channels_response = youtube.channels().list(
 
 print 'Requesting upload playlist from channels...'
 
-cutoff_date = datetime.utcnow()-timedelta(days=7)
-cutoff_date = cutoff_date.replace(tzinfo=pytz.utc)
+today = arrow.utcnow()
+cutoff_date = today.replace(days=-7)
 
 videos = []
 
@@ -109,25 +107,24 @@ for channel in channels_response['items']:
         playlistitems_list_response = playlistitems_list_request.execute()
         for playlist_item in playlistitems_list_response['items']:
             snippet = playlist_item['snippet']
-            published_date = dateparser.parse(snippet['publishedAt'])
-            if cutoff_date > published_date:
+            published_date = arrow.get(snippet['publishedAt'])
+            if published_date < cutoff_date:
+                # Since the videos are ordered by newest first, if a video is
+                # older than the cutoff date, we can ignore the rest of the
+                # videos and move on to the next channel.
                 stale = True
                 break
             videos.append(snippet['resourceId']['videoId'])
         playlistitems_list_request = youtube.playlistItems().list_next(
             playlistitems_list_request, playlistitems_list_response)
 
-pprint.pprint(subscriptions)
-
-pprint.pprint(videos)
-
 playlists_insert_response = youtube.playlists().insert(
     part='snippet,status',
     body=dict(
         snippet=dict(
-            title='{0}-{1}'.format(cutoff_date, datetime.now()),
+            title='{0}-{1}'.format(cutoff_date, today),
             description='Videos from subscripted channels from {0} to {1}'
-            .format(cutoff_date, datetime.now())
+            .format(cutoff_date, today)
         ),
         status=dict(
             privacyStatus='private'
@@ -145,8 +142,12 @@ base_playlist_insert = {
         },
     },
 }
-
-for video in reversed(videos):
+for video in videos:
+    # There is no point in sorting the videos here. The publishedAt in the
+    # response from the channels refers to the date that the video was uploaded
+    # to YouTube, not when it was made available.
+    # The Youtube interface for the playlist correctly sorts the playlist via
+    # the videos' appearance date.
     body = dict(**base_playlist_insert)
     body['snippet']['resourceId']['videoId'] = video
     youtube.playlistItems().insert(
