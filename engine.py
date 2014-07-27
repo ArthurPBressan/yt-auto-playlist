@@ -69,7 +69,7 @@ subscriptions_request = youtube.subscriptions().list(
     part='snippet'
 )
 
-subscriptions = {}
+subscriptions = []
 
 print 'Requesting channels from current user...'
 
@@ -77,22 +77,13 @@ while subscriptions_request:
     subscriptions_response = subscriptions_request.execute()
     for subscription in subscriptions_response['items']:
         channel_id = subscription['snippet']['resourceId']['channelId']
-        channel_title = subscription['snippet']['title']
-        subscriptions.update({
-            channel_id: {
-                'title': channel_title,
-                'channelId': channel_id
-            }
-        })
+        subscriptions.append(channel_id)
     subscriptions_request = youtube.subscriptions() \
         .list_next(subscriptions_request, subscriptions_response)
 
-#pprint.pprint(subscriptions)
-#pprint.pprint(subscriptions.keys())
-
 channels_response = youtube.channels().list(
     part='contentDetails',
-    id=','.join(subscriptions.keys())
+    id=','.join(subscriptions)
 ).execute()
 
 print 'Requesting upload playlist from channels...'
@@ -100,14 +91,12 @@ print 'Requesting upload playlist from channels...'
 cutoff_date = datetime.utcnow()-timedelta(days=7)
 cutoff_date = cutoff_date.replace(tzinfo=pytz.utc)
 
+videos = []
+
 for channel in channels_response['items']:
     uploads_list_id = channel['contentDetails']['relatedPlaylists']['uploads']
-    current_channel = subscriptions[channel['id']]
-    current_channel.update({
-        'uploads': uploads_list_id,
-        'videos': []
-    })
-    print 'Videos in list %s of channel %s' % (uploads_list_id, current_channel['title'])
+
+    print 'Videos in list of channel %s' % (uploads_list_id)
 
     playlistitems_list_request = youtube.playlistItems().list(
         playlistId=uploads_list_id,
@@ -124,21 +113,13 @@ for channel in channels_response['items']:
             if cutoff_date > published_date:
                 stale = True
                 break
-            title = snippet['title']
-            video_id = snippet['resourceId']['videoId']
-            current_channel['videos'].append(video_id)
+            videos.append(snippet['resourceId']['videoId'])
         playlistitems_list_request = youtube.playlistItems().list_next(
             playlistitems_list_request, playlistitems_list_response)
 
-prune_keys = []
-for key, subscription in subscriptions.iteritems():
-    if not subscription['videos']:
-        prune_keys.append(key)
+pprint.pprint(subscriptions)
 
-for key in prune_keys:
-    subscriptions.pop(key, None)
-
-pprint.pprint(subscriptions, depth=3)
+pprint.pprint(videos)
 
 playlists_insert_response = youtube.playlists().insert(
     part='snippet,status',
